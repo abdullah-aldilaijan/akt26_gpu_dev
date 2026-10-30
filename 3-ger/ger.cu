@@ -12,9 +12,24 @@
 // Custom rank-1 update kernel
 // A <- A + alpha * x * y^T
 // Column-major storage: A(i,j) = A[j*m + i]
+// threads in x go down a column (coalesced), each thread does NCOLS columns
+#define NCOLS 4
+
 __global__ void ger_kernel(int m, int n, float alpha, const float* x, const float* y, float* A)
 {
-    // TODO: write your CUDA kernel here
+    int i  = blockIdx.x * blockDim.x + threadIdx.x;
+    int j0 = (blockIdx.y * blockDim.y + threadIdx.y) * NCOLS;
+
+    if (i >= m) return;
+
+    float ax = alpha * x[i];
+
+    for (int c = 0; c < NCOLS; c++) {
+        int j = j0 + c;
+        if (j < n) {
+            A[(size_t)j * m + i] += ax * y[j];
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -106,9 +121,9 @@ int main(int argc, char** argv)
     std::printf("Matrix storage: column-major\n\n");
 
     // n1000: configure your kernel here
-    // TODO: the configuration below is a default that you must change
-    dim3 block(16, 16, 1);
-    dim3 grid( 1, 1, 1);
+    // 32 rows x (8*NCOLS) columns per block
+    dim3 block(32, 8, 1);
+    dim3 grid((m + 31) / 32, (n + 8 * NCOLS - 1) / (8 * NCOLS), 1);
     // end of TODO: kernel configuration
 
     cudaEvent_t start, stop;
